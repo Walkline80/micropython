@@ -35,7 +35,7 @@
 #define ADC_CHANNEL_FROM_GPIO(gpio) ((gpio) - 26)
 #define ADC_CHANNEL_TEMPSENSOR (4)
 
-STATIC uint16_t adc_config_and_read_u16(uint32_t channel) {
+static uint16_t adc_config_and_read_u16(uint32_t channel) {
     adc_select_input(channel);
     uint32_t raw = adc_read();
     const uint32_t bits = 12;
@@ -57,13 +57,13 @@ typedef struct _machine_adc_obj_t {
     #endif
 } machine_adc_obj_t;
 
-STATIC void mp_machine_adc_print(const mp_print_t *print, mp_obj_t self_in, mp_print_kind_t kind) {
+static void mp_machine_adc_print(const mp_print_t *print, mp_obj_t self_in, mp_print_kind_t kind) {
     machine_adc_obj_t *self = MP_OBJ_TO_PTR(self_in);
     mp_printf(print, "<ADC channel=%u>", self->channel);
 }
 
 // ADC(id)
-STATIC mp_obj_t mp_machine_adc_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *all_args) {
+static mp_obj_t mp_machine_adc_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *all_args) {
     // Check number of arguments
     mp_arg_check_num(n_args, n_kw, 1, 1, false);
 
@@ -74,14 +74,14 @@ STATIC mp_obj_t mp_machine_adc_make_new(const mp_obj_type_t *type, size_t n_args
     const machine_pin_obj_t *pin = NULL;
 
     if (mp_obj_is_int(source)) {
-        // Get and validate channel number.
         channel = mp_obj_get_int(source);
-        if (ADC_IS_VALID_GPIO(channel)) {
-            channel = ADC_CHANNEL_FROM_GPIO(channel);
-        } else if (!(channel >= 0 && channel <= ADC_CHANNEL_TEMPSENSOR)) {
-            mp_raise_ValueError(MP_ERROR_TEXT("invalid channel"));
+        if (!(channel >= 0 && channel <= ADC_CHANNEL_TEMPSENSOR)) {
+            // Not a valid ADC channel, fallback to searching for a pin.
+            channel = -1;
         }
-    } else {
+    }
+
+    if (channel == -1) {
         // Get GPIO and check it has ADC capabilities.
         pin = machine_pin_find(source);
         bool valid_adc_pin = false;
@@ -132,7 +132,7 @@ STATIC mp_obj_t mp_machine_adc_make_new(const mp_obj_type_t *type, size_t n_args
 }
 
 // read_u16()
-STATIC mp_int_t mp_machine_adc_read_u16(machine_adc_obj_t *self) {
+static mp_int_t mp_machine_adc_read_u16(machine_adc_obj_t *self) {
     #if MICROPY_HW_ADC_EXT_COUNT
     if (self->is_ext) {
         return machine_pin_ext_read_u16(self->channel);

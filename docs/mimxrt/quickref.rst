@@ -309,7 +309,7 @@ rates (up to 30Mhz).  Hardware SPI is accessed via the
 For the assignment of Pins to SPI signals, refer to
 :ref:`Hardware SPI pinout <mimxrt_spi_pinout>`.
 The keyword option cs=n can be used to enable the cs pin 0 or 1 for an automatic cs signal. The
-default is cs=-1. Using cs=-1 the automatic cs signal is not created. 
+default is cs=-1. Using cs=-1 the automatic cs signal is not created.
 In that case, cs has to be set by the script. Clearing that assignment requires a power cycle.
 
 Notes:
@@ -528,7 +528,7 @@ Ethernet.  Example usage::
     lan.active(True)
 
 If there is a DHCP server in the LAN, the IP address is supplied by that server.
-Otherwise, the IP address can be set with lan.ifconfig().  The default address
+Otherwise, the IP address can be set with lan.ipconfig(addr4="...").  The default address
 is 192.168.0.1.
 
 Teensy 4.1 does not have an Ethernet jack on the board, but PJRC offers an

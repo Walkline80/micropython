@@ -15,6 +15,7 @@ SRC_EXTMOD_C += \
 	extmod/machine_spi.c \
 	extmod/machine_timer.c \
 	extmod/machine_uart.c \
+	extmod/machine_usb_device.c \
 	extmod/machine_wdt.c \
 	extmod/modasyncio.c \
 	extmod/modbinascii.c \
@@ -30,6 +31,9 @@ SRC_EXTMOD_C += \
 	extmod/modmachine.c \
 	extmod/modnetwork.c \
 	extmod/modonewire.c \
+	extmod/modopenamp.c \
+	extmod/modopenamp_remoteproc.c \
+	extmod/modopenamp_remoteproc_store.c \
 	extmod/modos.c \
 	extmod/modplatform.c\
 	extmod/modrandom.c \
@@ -163,6 +167,7 @@ SRC_LIB_LIBM_DBL_SQRT_HW_C += lib/libm_dbl/thumb_vfp_sqrt.c
 
 # Too many warnings in libm_dbl, disable for now.
 $(BUILD)/lib/libm_dbl/%.o: CFLAGS += -Wno-double-promotion -Wno-float-conversion
+$(BUILD)/lib/libm_dbl/__rem_pio2_large.o: CFLAGS += -Wno-maybe-uninitialized
 
 ################################################################################
 # VFS FAT FS
@@ -377,8 +382,10 @@ endif
 
 ifeq ($(MICROPY_PY_BTREE),1)
 BTREE_DIR = lib/berkeley-db-1.xx
-BTREE_DEFS = -D__DBINTERFACE_PRIVATE=1 -Dmpool_error=printf -Dabort=abort_ "-Dvirt_fd_t=void*" $(BTREE_DEFS_EXTRA)
-INC += -I$(TOP)/$(BTREE_DIR)/PORT/include
+BERKELEY_DB_CONFIG_FILE ?= \"extmod/berkeley-db/berkeley_db_config_port.h\"
+CFLAGS_EXTMOD += -DBERKELEY_DB_CONFIG_FILE=$(BERKELEY_DB_CONFIG_FILE)
+CFLAGS_EXTMOD += $(BTREE_DEFS_EXTRA)
+INC += -I$(TOP)/$(BTREE_DIR)/include
 SRC_THIRDPARTY_C += $(addprefix $(BTREE_DIR)/,\
 	btree/bt_close.c \
 	btree/bt_conv.c \
@@ -397,9 +404,7 @@ SRC_THIRDPARTY_C += $(addprefix $(BTREE_DIR)/,\
 	)
 CFLAGS_EXTMOD += -DMICROPY_PY_BTREE=1
 # we need to suppress certain warnings to get berkeley-db to compile cleanly
-# and we have separate BTREE_DEFS so the definitions don't interfere with other source code
-$(BUILD)/$(BTREE_DIR)/%.o: CFLAGS += -Wno-old-style-definition -Wno-sign-compare -Wno-unused-parameter -Wno-deprecated-non-prototype -Wno-unknown-warning-option $(BTREE_DEFS)
-$(BUILD)/extmod/modbtree.o: CFLAGS += $(BTREE_DEFS)
+$(BUILD)/$(BTREE_DIR)/%.o: CFLAGS += -Wno-old-style-definition -Wno-sign-compare -Wno-unused-parameter -Wno-deprecated-non-prototype -Wno-unknown-warning-option
 endif
 
 ################################################################################
@@ -514,3 +519,58 @@ include $(TOP)/extmod/btstack/btstack.mk
 endif
 
 endif
+
+################################################################################
+# openamp
+
+ifeq ($(MICROPY_PY_OPENAMP),1)
+OPENAMP_DIR = lib/open-amp
+LIBMETAL_DIR = lib/libmetal
+GIT_SUBMODULES += $(LIBMETAL_DIR) $(OPENAMP_DIR)
+include $(TOP)/extmod/libmetal/libmetal.mk
+
+INC += -I$(TOP)/$(OPENAMP_DIR)
+CFLAGS += -DMICROPY_PY_OPENAMP=1
+
+ifeq ($(MICROPY_PY_OPENAMP_REMOTEPROC),1)
+CFLAGS += -DMICROPY_PY_OPENAMP_REMOTEPROC=1
+endif
+
+CFLAGS_THIRDPARTY += \
+    -I$(BUILD)/openamp \
+    -I$(TOP)/$(OPENAMP_DIR) \
+    -I$(TOP)/$(OPENAMP_DIR)/lib/include/ \
+    -DMETAL_INTERNAL \
+    -DVIRTIO_DRIVER_ONLY \
+    -DNO_ATOMIC_64_SUPPORT \
+    -DRPMSG_BUFFER_SIZE=512 \
+
+# OpenAMP's source files.
+SRC_OPENAMP_C += $(addprefix $(OPENAMP_DIR)/lib/,\
+	rpmsg/rpmsg.c \
+	rpmsg/rpmsg_virtio.c \
+	virtio/virtio.c \
+	virtio/virtqueue.c \
+	virtio_mmio/virtio_mmio_drv.c \
+	)
+
+# OpenAMP's remoteproc source files.
+ifeq ($(MICROPY_PY_OPENAMP_REMOTEPROC),1)
+SRC_OPENAMP_C += $(addprefix $(OPENAMP_DIR)/lib/remoteproc/,\
+	elf_loader.c \
+	remoteproc.c \
+	remoteproc_virtio.c \
+	rsc_table_parser.c \
+	)
+endif # MICROPY_PY_OPENAMP_REMOTEPROC
+
+# Disable compiler warnings in OpenAMP (variables used only for assert).
+$(BUILD)/$(OPENAMP_DIR)/lib/rpmsg/rpmsg_virtio.o: CFLAGS += -Wno-unused-but-set-variable
+$(BUILD)/$(OPENAMP_DIR)/lib/virtio_mmio/virtio_mmio_drv.o: CFLAGS += -Wno-unused-but-set-variable
+
+# We need to have generated libmetal before compiling OpenAMP.
+$(addprefix $(BUILD)/, $(SRC_OPENAMP_C:.c=.o)): $(BUILD)/openamp/metal/config.h
+
+SRC_THIRDPARTY_C += $(SRC_LIBMETAL_C) $(SRC_OPENAMP_C)
+
+endif # MICROPY_PY_OPENAMP

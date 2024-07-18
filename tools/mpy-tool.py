@@ -88,7 +88,7 @@ class FreezeError(Exception):
 
 class Config:
     MPY_VERSION = 6
-    MPY_SUB_VERSION = 2
+    MPY_SUB_VERSION = 3
     MICROPY_LONGINT_IMPL_NONE = 0
     MICROPY_LONGINT_IMPL_LONGLONG = 1
     MICROPY_LONGINT_IMPL_MPZ = 2
@@ -113,6 +113,7 @@ MP_NATIVE_ARCH_ARMV7EMSP = 7
 MP_NATIVE_ARCH_ARMV7EMDP = 8
 MP_NATIVE_ARCH_XTENSA = 9
 MP_NATIVE_ARCH_XTENSAWIN = 10
+MP_NATIVE_ARCH_RV32IMC = 11
 
 MP_PERSISTENT_OBJ_FUN_TABLE = 0
 MP_PERSISTENT_OBJ_NONE = 1
@@ -734,8 +735,8 @@ class CompiledModule:
             elif config.MICROPY_LONGINT_IMPL == config.MICROPY_LONGINT_IMPL_NONE:
                 raise FreezeError(self, "target does not support long int")
             elif config.MICROPY_LONGINT_IMPL == config.MICROPY_LONGINT_IMPL_LONGLONG:
-                # TODO
-                raise FreezeError(self, "freezing int to long-long is not implemented")
+                print("static const mp_obj_int_t %s = {{&mp_type_int}, %d};" % (obj_name, obj))
+                return "MP_ROM_PTR(&%s)" % obj_name
             elif config.MICROPY_LONGINT_IMPL == config.MICROPY_LONGINT_IMPL_MPZ:
                 neg = 0
                 if obj < 0:
@@ -1094,8 +1095,10 @@ class RawCodeNative(RawCode):
         ):
             # ARMV6 or Xtensa -- four byte align.
             self.fun_data_attributes += " __attribute__ ((aligned (4)))"
-        elif MP_NATIVE_ARCH_ARMV6M <= config.native_arch <= MP_NATIVE_ARCH_ARMV7EMDP:
-            # ARMVxxM -- two byte align.
+        elif (
+            MP_NATIVE_ARCH_ARMV6M <= config.native_arch <= MP_NATIVE_ARCH_ARMV7EMDP
+        ) or config.native_arch == MP_NATIVE_ARCH_RV32IMC:
+            # ARMVxxM or RV32IMC -- two byte align.
             self.fun_data_attributes += " __attribute__ ((aligned (2)))"
 
     def disassemble(self):
@@ -1730,10 +1733,13 @@ def merge_mpy(compiled_modules, output_file):
         bytecode.append(0b00000010)  # prelude size (n_info=1, n_cell=0)
         bytecode.extend(b"\x00")  # simple_name: qstr index 0 (will use source filename)
         for idx in range(len(compiled_modules)):
-            bytecode.append(0x32)  # MP_BC_MAKE_FUNCTION
-            bytecode.append(idx)  # index raw code
-            bytecode.extend(b"\x34\x00\x59")  # MP_BC_CALL_FUNCTION, 0 args, MP_BC_POP_TOP
-        bytecode.extend(b"\x51\x63")  # MP_BC_LOAD_NONE, MP_BC_RETURN_VALUE
+            bytecode.append(Opcode.MP_BC_MAKE_FUNCTION)
+            bytecode.extend(mp_encode_uint(idx))  # index of raw code
+            bytecode.append(Opcode.MP_BC_CALL_FUNCTION)
+            bytecode.append(0)  # 0 arguments
+            bytecode.append(Opcode.MP_BC_POP_TOP)
+        bytecode.append(Opcode.MP_BC_LOAD_CONST_NONE)
+        bytecode.append(Opcode.MP_BC_RETURN_VALUE)
 
         merged_mpy.extend(mp_encode_uint(len(bytecode) << 3 | 1 << 2))  # length, has_children
         merged_mpy.extend(bytecode)
